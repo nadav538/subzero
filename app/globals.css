@@ -1,0 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #06070e;
+  --s1: #0b0c18;
+  --s2: #10111e;
+  --s3: #161726;
+  --card: #0e0f1e;
+  --br: rgba(255,255,255,.07);
+  --br2: rgba(255,255,255,.12);
+  --blue: #4f7fff;
+  --teal: #00d4a8;
+  --red: #ff5577;
+  --gold: #ffbe3d;
+  --purple: #9b6dff;
+  --t1: #f2f2fc;
+  --t2: #8080a0;
+  --t3: #404055;
+  --r: 16px;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--t1); }
+body { font-family: 'Outfit', sans-serif; -webkit-font-smoothing: antialiased; line-height: 1.6; }
+body[dir="rtl"] { font-family: 'Noto Sans Hebrew', sans-serif; }
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 2px; }
