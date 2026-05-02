@@ -36,6 +36,11 @@ export default async function Home() {
             color: "#f2f2fc", padding: "14px 32px", borderRadius: 12,
             fontWeight: 600, fontSize: 16, textDecoration: "none",
           }}>Sign In</Link>
+          <Link href="/game" style={{
+            background: "linear-gradient(135deg, #ff6b35, #ff4455)",
+            color: "#fff", padding: "14px 32px", borderRadius: 12,
+            fontWeight: 700, fontSize: 16, textDecoration: "none",
+          }}>🎮 Play Game</Link>
         </div>
       </div>
     </main>
