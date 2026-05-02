@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Upgrade Run</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;overflow:hidden;font-family:'Segoe UI',Tahoma,sans-serif;user-select:none}
+canvas{display:block}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#hud{position:absolute;top:16px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-start;color:#fff;font-size:16px;direction:ltr}
+#hud .coin-display{background:rgba(0,0,0,0.5);padding:8px 16px;border-radius:20px;display:flex;align-items:center;gap:8px;font-weight:700;font-size:20px}
+#hud .coin-icon{color:#ffd700;font-size:22px}
+#hud .stats{display:flex;gap:12px}
+#hud .stat{background:rgba(0,0,0,0.5);padding:6px 12px;border-radius:12px;font-size:13px;color:#aaa}
+#hud .stat span{color:#4eeaff}
+#hud .score-display{background:rgba(0,0,0,0.5);padding:8px 16px;border-radius:20px;font-weight:700;font-size:18px;color:#4eeaff}
+#hud .upgrades-active{display:flex;gap:8px;margin-top:8px}
+#hud .upgrade-badge{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:700;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+
+#menu{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,10,26,0.95);pointer-events:all;direction:rtl}
+#menu.hidden{display:none}
+#menu h1{font-size:64px;font-weight:900;color:#fff;margin-bottom:8px;text-shadow:0 0 30px rgba(78,234,255,0.5)}
+#menu h1 span{color:#4eeaff}
+#menu .subtitle{color:#888;font-size:18px;margin-bottom:40px}
+#menu .start-btn{background:linear-gradient(135deg,#4eeaff,#0099ff);color:#0a0a1a;border:none;padding:16px 48px;font-size:22px;font-weight:800;border-radius:16px;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s;pointer-events:all}
+#menu .start-btn:hover{transform:scale(1.05);box-shadow:0 0 30px rgba(78,234,255,0.4)}
+
+#death{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(10,10,26,0.92);pointer-events:all;direction:rtl}
+#death.hidden{display:none}
+#death h2{font-size:42px;color:#ff4466;font-weight:900;margin-bottom:8px}
+#death .run-score{color:#fff;font-size:20px;margin-bottom:4px}
+#death .run-coins{color:#ffd700;font-size:18px;margin-bottom:30px}
+#death .shop{display:flex;gap:16px;margin-bottom:30px;flex-wrap:wrap;justify-content:center;max-width:600px}
+#death .shop-item{background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.1);border-radius:16px;padding:20px;width:170px;text-align:center;cursor:pointer;transition:all 0.2s;pointer-events:all}
+#death .shop-item:hover{border-color:#4eeaff;background:rgba(78,234,255,0.08);transform:translateY(-2px)}
+#death .shop-item.maxed{opacity:0.4;cursor:default}
+#death .shop-item .icon{font-size:32px;margin-bottom:8px}
+#death .shop-item .name{color:#fff;font-weight:700;font-size:15px;margin-bottom:4px}
+#death .shop-item .level{color:#4eeaff;font-size:13px;margin-bottom:8px}
+#death .shop-item .cost{color:#ffd700;font-size:14px;font-weight:700}
+#death .play-btn{background:linear-gradient(135deg,#4eeaff,#0099ff);color:#0a0a1a;border:none;padding:14px 44px;font-size:20px;font-weight:800;border-radius:14px;cursor:pointer;transition:transform 0.2s;pointer-events:all}
+#death .play-btn:hover{transform:scale(1.05)}
+#death .total-coins{color:#ffd700;font-size:16px;margin-bottom:20px}
+#controls-hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.3);font-size:13px;direction:ltr}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="hud">
+    <div>
+      <div class="coin-display"><span class="coin-icon">●</span><span id="coinCount">0</span></div>
+      <div class="upgrades-active" id="activeUpgrades"></div>
+    </div>
+    <div class="score-display"><span id="scoreCount">0</span>m</div>
+  </div>
+</div>
+
+<div id="menu">
+  <h1>UPGRADE <span>RUN</span></h1>
+  <div class="subtitle">רוץ. אסוף. שדרג. חזור.</div>
+  <button class="start-btn" onclick="startGame()">התחל לרוץ</button>
+</div>
+
+<div id="death" class="hidden">
+  <h2>נפלת!</h2>
+  <div class="run-score" id="deathScore"></div>
+  <div class="run-coins" id="deathCoins"></div>
+  <div class="total-coins" id="deathTotal"></div>
+  <div class="shop" id="shop"></div>
+  <button class="play-btn" onclick="startGame()">שוב!</button>
+</div>
+
+<div id="controls-hint">← → Move &nbsp;|&nbsp; Space / ↑ Jump</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// --- GAME STATE ---
+const GROUND_Y_RATIO = 0.75;
+let groundY;
+
+const PERMANENT = {
+  speed: { level: 0, max: 10, baseCost: 15, costMult: 1.6, icon: '⚡', name: 'מהירות', effect: 0.3 },
+  jump:  { level: 0, max: 10, baseCost: 20, costMult: 1.6, icon: '🦘', name: 'קפיצה', effect: 0.8 },
+  magnet:{ level: 0, max: 8,  baseCost: 25, costMult: 1.7, icon: '🧲', name: 'מגנט', effect: 15 },
+};
+
+let totalCoins = 0;
+
+let state = 'menu';
+let player, obstacles, coins, powerups, particles;
+let score, runCoins, gameSpeed, spawnTimer, coinTimer, powerupTimer;
+let tempBoosts;
+let lastTime;
+let groundOffset;
+let stars;
+
+function getCost(stat) {
+  const s = PERMANENT[stat];
+  if (s.level >= s.max) return Infinity;
+  return Math.floor(s.baseCost * Math.pow(s.costMult, s.level));
+}
+
+function getBaseSpeed() { return 5 + PERMANENT.speed.level * PERMANENT.speed.effect; }
+function getBaseJump() { return 13 + PERMANENT.jump.level * PERMANENT.jump.effect; }
+function getBaseMagnet() { return 30 + PERMANENT.magnet.level * PERMANENT.magnet.effect; }
+
+function initStars() {
+  stars = [];
+  for (let i = 0; i < 80; i++) {
+    stars.push({ x: Math.random() * W, y: Math.random() * H * 0.7, s: Math.random() * 2 + 0.5, b: Math.random() });
+  }
+}
+initStars();
+
+function initGame() {
+  groundY = H * GROUND_Y_RATIO;
+  player = {
+    x: W * 0.2,
+    y: groundY,
+    w: 28,
+    h: 44,
+    vy: 0,
+    grounded: true,
+    lane: 0,
+    targetX: W * 0.2,
+    color: '#4eeaff',
+    trail: [],
+  };
+  obstacles = [];
+  coins = [];
+  powerups = [];
+  particles = [];
+  score = 0;
+  runCoins = 0;
+  gameSpeed = getBaseSpeed();
+  spawnTimer = 0;
+  coinTimer = 0;
+  powerupTimer = 0;
+  groundOffset = 0;
+  tempBoosts = { speed: 0, jump: 0, magnet: 0 };
+  lastTime = performance.now();
+}
+
+function startGame() {
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('death').classList.add('hidden');
+  state = 'playing';
+  initGame();
+  requestAnimationFrame(loop);
+}
+
+// --- INPUT ---
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space' || e.code === 'ArrowUp') e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+let touchStartX = 0;
+let touchStartY = 0;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const dx = e.touches[0].clientX - touchStartX;
+  const dy = e.touches[0].clientY - touchStartY;
+  if (Math.abs(dy) > 30 && dy < 0) { keys['Space'] = true; }
+  if (dx > 30) { keys['ArrowRight'] = true; keys['ArrowLeft'] = false; }
+  else if (dx < -30) { keys['ArrowLeft'] = true; keys['ArrowRight'] = false; }
+});
+canvas.addEventListener('touchend', e => {
+  keys['ArrowLeft'] = false;
+  keys['ArrowRight'] = false;
+  keys['Space'] = false;
+});
+
+// --- GAME LOOP ---
+function loop(now) {
+  if (state !== 'playing') return;
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function update(dt) {
+  const speed = (gameSpeed + tempBoosts.speed) * (1 + score / 5000);
+  const jumpPower = getBaseJump() + tempBoosts.jump;
+  const magnetRange = getBaseMagnet() + tempBoosts.magnet;
+
+  // Boost timers
+  for (const k of ['speed', 'jump', 'magnet']) {
+    if (tempBoosts[k] > 0) tempBoosts[k] = Math.max(0, tempBoosts[k] - dt * (k === 'speed' ? 0.5 : k === 'jump' ? 0.3 : 3));
+  }
+
+  score += speed * dt * 10;
+  groundOffset = (groundOffset + speed * dt * 60) % 40;
+
+  // Player movement
+  const moveSpeed = 350;
+  if (keys['ArrowLeft'] || keys['KeyA']) player.targetX -= moveSpeed * dt;
+  if (keys['ArrowRight'] || keys['KeyD']) player.targetX += moveSpeed * dt;
+  player.targetX = Math.max(30, Math.min(W - 30, player.targetX));
+  player.x += (player.targetX - player.x) * 12 * dt;
+
+  // Jump
+  if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && player.grounded) {
+    player.vy = -jumpPower;
+    player.grounded = false;
+    spawnParticles(player.x, groundY, '#4eeaff', 6);
+  }
+
+  // Gravity
+  player.vy += 35 * dt;
+  player.y += player.vy * dt * 60;
+  if (player.y >= groundY) {
+    player.y = groundY;
+    player.vy = 0;
+    if (!player.grounded) spawnParticles(player.x, groundY, '#fff', 3);
+    player.grounded = true;
+  }
+
+  // Trail
+  player.trail.push({ x: player.x, y: player.y - player.h / 2, a: 1 });
+  if (player.trail.length > 12) player.trail.shift();
+  player.trail.forEach(t => t.a *= 0.9);
+
+  // Spawn obstacles
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    const gap = Math.max(0.6, 1.8 - score / 3000);
+    spawnTimer = gap + Math.random() * gap * 0.5;
+    const h = 30 + Math.random() * 40;
+    const w = 20 + Math.random() * 30;
+    const ox = W + 50;
+    const oy = groundY;
+    obstacles.push({ x: ox, y: oy, w, h, passed: false });
+  }
+
+  // Spawn coins
+  coinTimer -= dt;
+  if (coinTimer <= 0) {
+    coinTimer = 0.4 + Math.random() * 0.6;
+    const cx = W + 50;
+    const cy = groundY - 30 - Math.random() * 120;
+    coins.push({ x: cx, y: cy, r: 10, collected: false, glow: 0 });
+  }
+
+  // Spawn powerups
+  powerupTimer -= dt;
+  if (powerupTimer <= 0) {
+    powerupTimer = 6 + Math.random() * 8;
+    const types = ['speed', 'jump', 'magnet'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    const px = W + 50;
+    const py = groundY - 50 - Math.random() * 80;
+    const icons = { speed: '⚡', jump: '🦘', magnet: '🧲' };
+    const colors = { speed: '#ff9900', jump: '#44ff88', magnet: '#ff44ff' };
+    powerups.push({ x: px, y: py, type, icon: icons[type], color: colors[type], collected: false });
+  }
+
+  // Move objects
+  const moveAmt = speed * dt * 60;
+  obstacles.forEach(o => o.x -= moveAmt);
+  coins.forEach(c => { if (!c.collected) c.x -= moveAmt; });
+  powerups.forEach(p => { if (!p.collected) p.x -= moveAmt; });
+
+  // Magnet effect on coins
+  coins.forEach(c => {
+    if (c.collected) return;
+    const dx = player.x - c.x;
+    const dy = (player.y - player.h / 2) - c.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < magnetRange) {
+      const pull = (1 - dist / magnetRange) * 8;
+      c.x += dx / dist * pull * dt * 60;
+      c.y += dy / dist * pull * dt * 60;
+    }
+  });
+
+  // Collision: coins
+  coins.forEach(c => {
+    if (c.collected) return;
+    const dx = player.x - c.x;
+    const dy = (player.y - player.h / 2) - c.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 25) {
+      c.collected = true;
+      runCoins++;
+      spawnParticles(c.x, c.y, '#ffd700', 8);
+    }
+  });
+
+  // Collision: powerups
+  powerups.forEach(p => {
+    if (p.collected) return;
+    const dx = player.x - p.x;
+    const dy = (player.y - player.h / 2) - p.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 30) {
+      p.collected = true;
+      if (p.type === 'speed') tempBoosts.speed += 3;
+      if (p.type === 'jump') tempBoosts.jump += 5;
+      if (p.type === 'magnet') tempBoosts.magnet += 80;
+      spawnParticles(p.x, p.y, p.color, 15);
+      showUpgradeBadge(p.type, p.color);
+    }
+  });
+
+  // Collision: obstacles
+  const px = player.x;
+  const py = player.y;
+  const pw = player.w;
+  const ph = player.h;
+  for (const o of obstacles) {
+    if (px + pw / 2 > o.x - o.w / 2 && px - pw / 2 < o.x + o.w / 2 &&
+        py > o.y - o.h && py - ph < o.y) {
+      die();
+      return;
+    }
+  }
+
+  // Cleanup
+  obstacles = obstacles.filter(o => o.x > -100);
+  coins = coins.filter(c => !c.collected && c.x > -50);
+  powerups = powerups.filter(p => !p.collected && p.x > -50);
+
+  // Particles
+  particles.forEach(p => {
+    p.x += p.vx * dt * 60;
+    p.y += p.vy * dt * 60;
+    p.vy += 8 * dt;
+    p.life -= dt * 2;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  // HUD
+  document.getElementById('coinCount').textContent = runCoins;
+  document.getElementById('scoreCount').textContent = Math.floor(score);
+
+  // Active upgrades display
+  const au = document.getElementById('activeUpgrades');
+  au.innerHTML = '';
+  if (tempBoosts.speed > 0) au.innerHTML += `<div class="upgrade-badge" style="background:rgba(255,153,0,0.3);color:#ff9900">⚡ מהירות</div>`;
+  if (tempBoosts.jump > 0) au.innerHTML += `<div class="upgrade-badge" style="background:rgba(68,255,136,0.3);color:#44ff88">🦘 קפיצה</div>`;
+  if (tempBoosts.magnet > 0) au.innerHTML += `<div class="upgrade-badge" style="background:rgba(255,68,255,0.3);color:#ff44ff">🧲 מגנט</div>`;
+}
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 1) * 5,
+      r: 2 + Math.random() * 3,
+      color,
+      life: 1,
+    });
+  }
+}
+
+let upgradeBadges = [];
+function showUpgradeBadge(type, color) {
+  const names = { speed: 'מהירות+', jump: 'קפיצה+', magnet: 'מגנט+' };
+  upgradeBadges.push({ text: names[type], color, timer: 2 });
+}
+
+function die() {
+  state = 'dead';
+  totalCoins += runCoins;
+
+  document.getElementById('deathScore').textContent = `${Math.floor(score)} מטר`;
+  document.getElementById('deathCoins').textContent = `💰 ${runCoins} מטבעות נאספו`;
+  document.getElementById('deathTotal').textContent = `סה"כ מטבעות: ${totalCoins}`;
+
+  renderShop();
+  document.getElementById('death').classList.remove('hidden');
+}
+
+function renderShop() {
+  const shop = document.getElementById('shop');
+  shop.innerHTML = '';
+  for (const [key, stat] of Object.entries(PERMANENT)) {
+    const cost = getCost(key);
+    const maxed = stat.level >= stat.max;
+    const canBuy = totalCoins >= cost && !maxed;
+    const div = document.createElement('div');
+    div.className = 'shop-item' + (maxed ? ' maxed' : '');
+    div.innerHTML = `
+      <div class="icon">${stat.icon}</div>
+      <div class="name">${stat.name}</div>
+      <div class="level">רמה ${stat.level}/${stat.max}</div>
+      <div class="cost">${maxed ? 'מקסימום!' : '💰 ' + cost}</div>
+    `;
+    if (canBuy) {
+      div.style.cursor = 'pointer';
+      div.addEventListener('click', () => {
+        totalCoins -= cost;
+        stat.level++;
+        document.getElementById('deathTotal').textContent = `סה"כ מטבעות: ${totalCoins}`;
+        renderShop();
+      });
+    }
+    shop.appendChild(div);
+  }
+}
+
+// --- DRAW ---
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Sky gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#0a0a2e');
+  skyGrad.addColorStop(0.6, '#0f1033');
+  skyGrad.addColorStop(1, '#1a1a3e');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars
+  stars.forEach(s => {
+    s.b += 0.02;
+    const alpha = 0.3 + Math.sin(s.b) * 0.3;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.s, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.fill();
+  });
+
+  // Ground
+  ctx.fillStyle = '#151530';
+  ctx.fillRect(0, groundY, W, H - groundY);
+
+  // Ground line
+  ctx.strokeStyle = '#2a2a5a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, groundY);
+  ctx.lineTo(W, groundY);
+  ctx.stroke();
+
+  // Ground dashes
+  ctx.strokeStyle = '#1e1e44';
+  ctx.lineWidth = 1;
+  for (let x = -groundOffset; x < W + 40; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, groundY + 15);
+    ctx.lineTo(x + 20, groundY + 15);
+    ctx.stroke();
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Obstacles
+  obstacles.forEach(o => {
+    const grad = ctx.createLinearGradient(o.x, o.y - o.h, o.x, o.y);
+    grad.addColorStop(0, '#ff4466');
+    grad.addColorStop(1, '#cc2244');
+    ctx.fillStyle = grad;
+    roundRect(o.x - o.w / 2, o.y - o.h, o.w, o.h, 4);
+    ctx.shadowColor = '#ff4466';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+  // Coins
+  coins.forEach(c => {
+    if (c.collected) return;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffd700';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 15;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r - 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffed4a';
+    ctx.fill();
+  });
+
+  // Powerups
+  powerups.forEach(p => {
+    if (p.collected) return;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + '33';
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 20;
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.font = '20px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.icon, p.x, p.y);
+  });
+
+  // Player trail
+  player.trail.forEach((t, i) => {
+    ctx.globalAlpha = t.a * 0.3;
+    ctx.fillStyle = player.color;
+    ctx.fillRect(t.x - player.w / 4, t.y - player.h / 4, player.w / 2, player.h / 2);
+  });
+  ctx.globalAlpha = 1;
+
+  // Player
+  const px = player.x - player.w / 2;
+  const py = player.y - player.h;
+  const pGrad = ctx.createLinearGradient(px, py, px, py + player.h);
+  pGrad.addColorStop(0, '#4eeaff');
+  pGrad.addColorStop(1, '#0099ff');
+  ctx.fillStyle = pGrad;
+  ctx.shadowColor = '#4eeaff';
+  ctx.shadowBlur = 15;
+  roundRect(px, py, player.w, player.h, 6);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Player eyes
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(px + 8, py + 10, 5, 6);
+  ctx.fillRect(px + 16, py + 10, 5, 6);
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(px + 10, py + 12, 3, 4);
+  ctx.fillRect(px + 18, py + 12, 3, 4);
+
+  // Magnet range indicator
+  const magnetRange = getBaseMagnet() + tempBoosts.magnet;
+  if (magnetRange > 35) {
+    ctx.beginPath();
+    ctx.arc(player.x, player.y - player.h / 2, magnetRange, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,68,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Upgrade badges on screen
+  upgradeBadges = upgradeBadges.filter(b => b.timer > 0);
+  upgradeBadges.forEach((b, i) => {
+    b.timer -= 0.016;
+    ctx.globalAlpha = Math.min(1, b.timer);
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = b.color;
+    ctx.fillText(b.text, W / 2, H / 2 - 40 - i * 35 + (2 - b.timer) * 20);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// Save/Load
+function saveGame() {
+  const data = { totalCoins, permanent: {} };
+  for (const [k, v] of Object.entries(PERMANENT)) data.permanent[k] = v.level;
+  localStorage.setItem('upgradeRun', JSON.stringify(data));
+}
+function loadGame() {
+  try {
+    const data = JSON.parse(localStorage.getItem('upgradeRun'));
+    if (data) {
+      totalCoins = data.totalCoins || 0;
+      for (const [k, v] of Object.entries(data.permanent || {})) {
+        if (PERMANENT[k]) PERMANENT[k].level = v;
+      }
+    }
+  } catch(e) {}
+}
+
+// Auto-save
+setInterval(saveGame, 3000);
+loadGame();
+
+// Prevent scrolling
+window.addEventListener('keydown', e => {
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+</script>
+</body>
+</html>
